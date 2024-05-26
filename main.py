@@ -19,6 +19,12 @@ def main():
     
     # Perform EDA
     perform_eda(train_data, test_data, original_data)
+
+     # Preprocess/feature engineering the data
+    train_data_combined, test_data_combined, train_data, test_data= preprocess_data(train_data, test_data, original_data)
+    
+    # Select important features
+    xgb_selected_features, lgb_selected_features, cb_selected_features, xgb_model, lgb_model, cat_model = select_features(train_data_combined, test_data_combined, train_data)
     
 if __name__ == "__main__":
     main()
