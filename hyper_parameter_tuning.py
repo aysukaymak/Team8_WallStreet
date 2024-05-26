@@ -34,6 +34,15 @@ from sklearn.gaussian_process import GaussianProcessClassifier
 from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, GradientBoostingClassifier
 from sklearn.ensemble import HistGradientBoostingClassifier
 
+import optuna
+import xgboost as xgb
+import lightgbm as lgb
+from xgboost import XGBClassifier
+from lightgbm import LGBMClassifier
+from catboost import CatBoostClassifier
+
+from optuma_weights_model import build_optuma_weights_model
+
 import warnings as wrn
 wrn.filterwarnings('ignore', category = DeprecationWarning) 
 wrn.filterwarnings('ignore', category = FutureWarning) 
@@ -59,131 +68,136 @@ cb = CatBoostClassifier(random_state=seed, verbose=0)
 gb = GradientBoostingClassifier(random_state=seed)
 hgb = HistGradientBoostingClassifier(random_state=seed)
 
-# Catboost Optuna Hyperparameter Tuning
-# Assuming 'X' is your feature matrix and 'y' is your target variable
-X = train_data_combined[cb_selected_features].drop('Exited', axis=1)
-y = train_data_combined['Exited']
 
-def objective(trial):
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+def tune_hyperparameters(train_data_combined, test_data_combined,xgb_selected_features, lgb_selected_features, cb_selected_features, xgb_model, lgb_model, cat_model):
+    # Catboost Optuna Hyperparameter Tuning
+    # Assuming 'X' is your feature matrix and 'y' is your target variable
+    X = train_data_combined[cb_selected_features].drop('Exited', axis=1)
+    y = train_data_combined['Exited']
 
-    params = {
-        'iterations': trial.suggest_int('iterations', 200, 1000),
-        'depth': trial.suggest_int('depth', 3, 10),
-        'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 2, 20),
-        'learning_rate': trial.suggest_float('learning_rate', 1e-4, 0.2, log=True),
-        'random_state': 42,
-        'verbose': 0,
-        'eval_metric': 'AUC',
-    }
+    def objective(trial):
+        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    model = CatBoostClassifier(**params)
+        params = {
+            'iterations': trial.suggest_int('iterations', 200, 1000),
+            'depth': trial.suggest_int('depth', 3, 10),
+            'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 2, 20),
+            'learning_rate': trial.suggest_float('learning_rate', 1e-4, 0.2,    log=True),
+            'random_state': 42,
+            'verbose': 0,
+            'eval_metric': 'AUC',
+        }
 
-    model.fit(X_train, y_train, eval_set=[(X_val, y_val)], early_stopping_rounds=50)
+        model = CatBoostClassifier(**params)
 
-    y_pred = model.predict_proba(X_val)[:, 1]
-    auc = roc_auc_score(y_val, y_pred)
+        model.fit(X_train, y_train, eval_set=[(X_val, y_val)], early_stopping_rounds=50)
 
-    return auc
+        y_pred = model.predict_proba(X_val)[:, 1]
+        auc = roc_auc_score(y_val, y_pred)
 
-study = optuna.create_study(direction='maximize')
-study.optimize(objective, n_trials=100)
+        return auc
 
-print('Number of finished trials: ', len(study.trials))
-print('Best trial:')
-trial = study.best_trial
+    study = optuna.create_study(direction='maximize')
+    study.optimize(objective, n_trials=100)
 
-print('Value: ', trial.value)
-print('Params: ')
-for key, value in trial.params.items():
-    print(f'    {key}: {value}')
+    print('Number of finished trials: ', len(study.trials))
+    print('Best trial:')
+    trial = study.best_trial
 
-# XGB Optuna Hyperparameter Tuning
-# Assuming 'X' is your feature matrix and 'y' is your target variable
-X = train_data_combined[xgb_selected_features].drop('Exited', axis=1)
-y = train_data_combined['Exited']
+    print('Value: ', trial.value)
+    print('Params: ')
+    for key, value in trial.params.items():
+        print(f'    {key}: {value}')
 
-def objective(trial):
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+    # XGB Optuna Hyperparameter Tuning
+    # Assuming 'X' is your feature matrix and 'y' is your target variable
+    X = train_data_combined[xgb_selected_features].drop('Exited', axis=1)
+    y = train_data_combined['Exited']
 
-    params = {
-        'max_depth': trial.suggest_int('max_depth', 5, 10),
-        'min_child_weight': trial.suggest_int('min_child_weight', 1, 10),
-        'learning_rate': trial.suggest_float('learning_rate', 0.01, 1.0),
-        'n_estimators': trial.suggest_int('n_estimators', 150, 1000),
-        'subsample': trial.suggest_float('subsample', 0.01, 1.0),
-        'colsample_bytree': trial.suggest_float('colsample_bytree', 0.01, 1.0),
-        'random_state': trial.suggest_categorical('random_state', [42]),
-        'tree_method': 'hist',  # Use GPU for training
-        'device': 'cuda',
-        'eval_metric': 'auc',  # Evaluation metric
-        'verbosity': 2,  # Set verbosity to 0 for less output
-    }
+    def objective(trial):
+        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    model = XGBClassifier(**params)
+        params = {
+            'max_depth': trial.suggest_int('max_depth', 5, 10),
+            'min_child_weight': trial.suggest_int('min_child_weight', 1, 10),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 1.0),
+            'n_estimators': trial.suggest_int('n_estimators', 150, 1000),
+            'subsample': trial.suggest_float('subsample', 0.01, 1.0),
+            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.01, 1.0),
+            'random_state': trial.suggest_categorical('random_state', [42]),
+            'tree_method': 'hist',  # Use GPU for training
+            'device': 'cuda',
+            'eval_metric': 'auc',  # Evaluation metric
+            'verbosity': 2,  # Set verbosity to 0 for less output
+        }
 
-    model.fit(X_train, y_train, eval_set=[(X_val, y_val)], early_stopping_rounds=100, verbose=False)
+        model = XGBClassifier(**params)
 
-    y_pred = model.predict_proba(X_val)[:, 1]
-    auc = roc_auc_score(y_val, y_pred)
+        model.fit(X_train, y_train, eval_set=[(X_val, y_val)], early_stopping_rounds=100, verbose=False)
 
-    return auc
+        y_pred = model.predict_proba(X_val)[:, 1]
+        auc = roc_auc_score(y_val, y_pred)
 
-study = optuna.create_study(direction='maximize')
-study.optimize(objective, n_trials=100)
+        return auc
 
-print('Number of finished trials: ', len(study.trials))
-print('Best trial:')
-trial = study.best_trial
+    study = optuna.create_study(direction='maximize')
+    study.optimize(objective, n_trials=100)
 
-print('Value: ', trial.value)
-print('Params: ')
-for key, value in trial.params.items():
-    print(f'    {key}: {value}')
+    print('Number of finished trials: ', len(study.trials))
+    print('Best trial:')
+    trial = study.best_trial
 
-# LGB Optuna Hyperparameter Tuning
-# Assuming 'X' is your feature matrix and 'y' is your target variable
-X = train_data_combined[lgb_selected_features].drop('Exited', axis=1)
-y = train_data_combined['Exited']
+    print('Value: ', trial.value)
+    print('Params: ')
+    for key, value in trial.params.items():
+        print(f'    {key}: {value}')
 
-import lightgbm as lgb
-from lightgbm import LGBMClassifier
+    # LGB Optuna Hyperparameter Tuning
+    # Assuming 'X' is your feature matrix and 'y' is your target variable
+    X = train_data_combined[lgb_selected_features].drop('Exited', axis=1)
+    y = train_data_combined['Exited']
 
-def objective(trial):
-    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+    import lightgbm as lgb
+    from lightgbm import LGBMClassifier
 
-    params = {
-        'objective': 'binary',
-        'boosting_type': 'gbdt',
-        'metric': 'auc',
-        'max_depth': trial.suggest_int('max_depth', 5, 10),
-        'min_child_samples': trial.suggest_int('min_child_samples', 1, 20),
-        'learning_rate': trial.suggest_float('learning_rate', 0.01, 1.0),
-        'n_estimators': trial.suggest_int('n_estimators', 150, 1000),
-        'subsample': trial.suggest_float('subsample', 0.1, 1.0),
-        'colsample_bytree': trial.suggest_float('colsample_bytree', 0.1, 1.0),
-        'reg_alpha': trial.suggest_float('reg_alpha', 0.0, 1.0),
-        'reg_lambda': trial.suggest_float('reg_lambda', 0.0, 1.0),
-        'random_state': 42,
-    }
+    def objective(trial):
+        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    model = lgb.LGBMClassifier(**params)
+        params = {
+            'objective': 'binary',
+            'boosting_type': 'gbdt',
+            'metric': 'auc',
+            'max_depth': trial.suggest_int('max_depth', 5, 10),
+            'min_child_samples': trial.suggest_int('min_child_samples', 1, 20),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 1.0),
+            'n_estimators': trial.suggest_int('n_estimators', 150, 1000),
+            'subsample': trial.suggest_float('subsample', 0.1, 1.0),
+            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.1, 1.0),
+            'reg_alpha': trial.suggest_float('reg_alpha', 0.0, 1.0),
+            'reg_lambda': trial.suggest_float('reg_lambda', 0.0, 1.0),
+            'random_state': 42,
+        }
 
-    model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
+        model = lgb.LGBMClassifier(**params)
 
-    y_pred = model.predict_proba(X_val)[:, 1]
-    auc = roc_auc_score(y_val, y_pred)
+        model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
 
-    return auc
+        y_pred = model.predict_proba(X_val)[:, 1]
+        auc = roc_auc_score(y_val, y_pred)
 
-study = optuna.create_study(direction='maximize')
-study.optimize(objective, n_trials=100)
+        return auc
 
-print('Number of finished trials: ', len(study.trials))
-print('Best trial:')
-trial = study.best_trial
+    study = optuna.create_study(direction='maximize')
+    study.optimize(objective, n_trials=100)
 
-print('Value: ', trial.value)
-print('Params: ')
-for key, value in trial.params.items():
-    print(f'    {key}: {value}')
+    print('Number of finished trials: ', len(study.trials))
+    print('Best trial:')
+    trial = study.best_trial
+
+    print('Value: ', trial.value)
+    print('Params: ')
+    for key, value in trial.params.items():
+        print(f'    {key}: {value}')
+        
+    ensemble_pred_proba=build_optuma_weights_model(train_data_combined, test_data_combined,xgb_model, xgb_selected_features, lgb_model, lgb_selected_features, cat_model, cb_selected_features)
+    return ensemble_pred_proba
