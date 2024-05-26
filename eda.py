@@ -46,155 +46,136 @@ wrn.filterwarnings('ignore', category = DeprecationWarning)
 wrn.filterwarnings('ignore', category = FutureWarning) 
 wrn.filterwarnings('ignore', category = UserWarning) 
 
-numerical_variables = ['CreditScore','Age', 'Balance','EstimatedSalary' ]
-target_variable = 'Exited'
-categorical_variables = ['Geography', 'Gender', 'Tenure','NumOfProducts', 'HasCrCard','IsActiveMember']
-
-#**** Analysis of all NUMERICAL features ****#
-# Define a custom color palette
-custom_palette = ['#3498db', '#e74c3c','#2ecc71']
-
-# Add 'Dataset' column to distinguish between train and test data
-train_data['Dataset'] = 'Train'
-test_data['Dataset'] = 'Test'
-original_data['Dataset'] = 'Original'
-
-variables = [col for col in train_data.columns if col in numerical_variables]
-
 # Function to create and display a row of plots for a single variable
-def create_variable_plots(variable):
-    sns.set_style('whitegrid')
-    
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+def create_variable_plots(variable, train_data, test_data, original_data):
+    # Define a custom color palette
+	custom_palette = ['#3498db', '#e74c3c','#2ecc71']
+ 
+	sns.set_style('whitegrid')
+	fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+	
+	# Box plot
+	plt.subplot(1, 2, 1)
+	sns.boxplot(data=pd.concat([train_data, test_data,original_data.dropna()]), x=variable,     y="Dataset", palette=custom_palette)
+	plt.xlabel(variable)
+	plt.title(f"Box Plot for {variable}")
 
-    # Box plot
-    plt.subplot(1, 2, 1)
-    sns.boxplot(data=pd.concat([train_data, test_data,original_data.dropna()]), x=variable, y="Dataset", palette=custom_palette)
-    plt.xlabel(variable)
-    plt.title(f"Box Plot for {variable}")
-
-    # Separate Histograms
-    plt.subplot(1, 2, 2)
-    sns.histplot(data=train_data, x=variable, color=custom_palette[0], kde=True, bins=30, label="Train")
-    sns.histplot(data=test_data, x=variable, color=custom_palette[1], kde=True, bins=30, label="Test")
-    sns.histplot(data=original_data.dropna(), x=variable, color=custom_palette[2], kde=True, bins=30, label="Original")
-    plt.xlabel(variable)
-    plt.ylabel("Frequency")
-    plt.title(f"Histogram for {variable} [TRAIN, TEST & ORIGINAL]")
-    plt.legend()
-
-    # Adjust spacing between subplots
-    plt.tight_layout()
-
-    # Show the plots
-    plt.show()
-
-# Perform univariate analysis for each variable
-for variable in variables:
-    create_variable_plots(variable)
-
-# Drop the 'Dataset' column after analysis
-train_data.drop('Dataset', axis=1, inplace=True)
-test_data.drop('Dataset', axis=1, inplace=True)
-original_data.drop('Dataset', axis=1, inplace=True)
-
-#**** Analysis of all CATEGORICAL features ****#
-
-# Define a custom color palette for categorical features
-categorical_palette = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6', '#bdc3c7', '#1abc9c', '#f1c40f', '#95a5a6', '#d35400']
-
-# List of categorical variables
-categorical_variables = [col for col in categorical_variables]
-
+	# Separate Histograms
+	plt.subplot(1, 2, 2)
+	sns.histplot(data=train_data, x=variable, color=custom_palette[0], kde=True, bins=30, label="Train")
+	sns.histplot(data=test_data, x=variable, color=custom_palette[1], kde=True, bins=30, label="Test")
+	sns.histplot(data=original_data.dropna(), x=variable, color=custom_palette[2], kde=True, bins=30, label="Original")
+	plt.xlabel(variable)
+	plt.ylabel("Frequency")
+	plt.title(f"Histogram for {variable} [TRAIN, TEST & ORIGINAL]")
+	plt.legend()
+	plt.tight_layout()
+	plt.savefig(f'outputs/analyze_of_{variable}_feature.png', bbox_inches='tight')
+ 
 # Function to create and display a row of plots for a single categorical variable
-def create_categorical_plots(variable):
-    sns.set_style('whitegrid')
-    
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+def create_categorical_plots(variable, train_data, test_data, original_data):
+    # Define a custom color palette for categorical features
+	categorical_palette = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6', '#bdc3c7', '#1abc9c', '#f1c40f', '#95a5a6', '#d35400']
 
-    # Pie Chart
-    plt.subplot(1, 2, 1)
-    train_data[variable].value_counts().plot.pie(autopct='%1.1f%%', colors=categorical_palette, wedgeprops=dict(width=0.3), startangle=140)
-    plt.title(f"Pie Chart for {variable}")
+	sns.set_style('whitegrid')
+	fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 
-    # Bar Graph
-    plt.subplot(1, 2, 2)
-    sns.countplot(data=pd.concat([train_data, test_data, original_data.dropna()]), x=variable, palette=categorical_palette)
-    plt.xlabel(variable)
-    plt.ylabel("Count")
-    plt.title(f"Bar Graph for {variable} [TRAIN, TEST & ORIGINAL]")
+	# Pie Chart
+	plt.subplot(1, 2, 1)
+	train_data[variable].value_counts().plot.pie(autopct='%1.1f%%', colors=categorical_palette, wedgeprops=dict(width=0.3), startangle=140)
+	plt.title(f"Pie Chart for {variable}")
 
-    # Adjust spacing between subplots
-    plt.tight_layout()
+	# Bar Graph
+	plt.subplot(1, 2, 2)
+	sns.countplot(data=pd.concat([train_data, test_data, original_data.dropna()]), x=variable)
+	plt.xlabel(variable)
+	plt.ylabel("Count")
+	plt.title(f"Bar Graph for {variable} [TRAIN, TEST & ORIGINAL]")
+	plt.tight_layout()
+	#plt.show()
+	plt.savefig(f'outputs/analyze_of_{variable}_feature.png', bbox_inches='tight')
 
-    # Show the plots
-    plt.show()
 
-# Perform univariate analysis for each categorical variable
-for variable in categorical_variables:
-    create_categorical_plots(variable)
+def perform_eda(train_data, test_data, original_data):
+	numerical_variables = ['CreditScore','Age', 'Balance','EstimatedSalary' ]
+	target_variable = 'Exited'
+	categorical_variables = ['Geography', 'Gender', 'Tenure','NumOfProducts', 'HasCrCard','IsActiveMember']
+	
+ 	#**** Analysis of all NUMERICAL features ****#
+	# Add 'Dataset' column to distinguish between train and test data
+	train_data['Dataset'] = 'Train'
+	test_data['Dataset'] = 'Test'
+	original_data['Dataset'] = 'Original'
 
-#**** Analysis of TARGET feature ****#
+	# Perform univariate analysis for each variable
+	variables = [col for col in train_data.columns if col in numerical_variables]
+	for variable in variables:
+		create_variable_plots(variable, train_data, test_data, original_data)
 
-# Define a custom color palette for categorical features
-target_palette = ['#3498db', '#e74c3c']
+	# Drop the 'Dataset' column after analysis
+	train_data.drop('Dataset', axis=1, inplace=True)
+	test_data.drop('Dataset', axis=1, inplace=True)
+	original_data.drop('Dataset', axis=1, inplace=True)
 
-fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+	#**** Analysis of all CATEGORICAL features ****#
+	# Perform univariate analysis for each categorical variable
+	categorical_variables = [col for col in categorical_variables]
+	for variable in categorical_variables:
+		create_categorical_plots(variable, train_data, test_data, original_data)
 
-# Pie Chart
-plt.subplot(1, 2, 1)
-train_data[target_variable].value_counts().plot.pie(autopct='%1.1f%%', colors=target_palette, wedgeprops=dict(width=0.3), startangle=140)
-plt.title(f"Pie Chart for Target Feature 'Exited'")
+	#**** Analysis of TARGET feature ****#
+	# Define a custom color palette for categorical features
+	target_palette = ['#3498db', '#e74c3c']
 
-# Bar Graph
-plt.subplot(1, 2, 2)
-sns.countplot(data=pd.concat([train_data, original_data.dropna()]), x=target_variable, palette=target_palette)
-plt.xlabel(variable)
-plt.ylabel("Count")
-plt.title(f"Bar Graph for Target Feature 'Exited'")
+	fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 
-# Adjust spacing between subplots
-plt.tight_layout()
+	# Pie Chart
+	plt.subplot(1, 2, 1)
+	train_data[target_variable].value_counts().plot.pie(autopct='%1.1f%%', colors=target_palette, wedgeprops=dict(width=0.3), startangle=140)
+	plt.title(f"Pie Chart for Target Feature 'Exited'")
 
-# Show the plots
-plt.show()
+	# Bar Graph
+	plt.subplot(1, 2, 2)
+	sns.countplot(data=pd.concat([train_data, original_data.dropna()]), x=target_variable, palette=target_palette)
+	plt.xlabel(variable)
+	plt.ylabel("Count")
+	plt.title(f"Bar Graph for Target Feature 'Exited'")
+	plt.tight_layout()
+	#plt.show()
+	plt.savefig(f'outputs/analyze_of_target_feature.png', bbox_inches='tight')
 
-#**** Correlation of features ****#
-variables = [col for col in train_data.columns if col in numerical_variables]
 
-cat_variables_train = ['NumOfProducts', 'HasCrCard', 'IsActiveMember', 'Tenure', 'Exited']
-cat_variables_test = ['NumOfProducts', 'HasCrCard', 'IsActiveMember', 'Tenure']
+	#**** Correlation of features ****#
+	variables = [col for col in train_data.columns if col in numerical_variables]
 
-# Adding variables to the existing list
-train_variables = variables + cat_variables_train
-test_variables = variables + cat_variables_test
+	cat_variables_train = ['NumOfProducts', 'HasCrCard', 'IsActiveMember', 'Tenure', 'Exited']
+	cat_variables_test = ['NumOfProducts', 'HasCrCard', 'IsActiveMember', 'Tenure']
 
-# Calculate correlation matrices for train_data and test_data
-corr_train = train_data[train_variables].corr()
-corr_test = test_data[test_variables].corr()
+	# Adding variables to the existing list
+	train_variables = variables + cat_variables_train
+	test_variables = variables + cat_variables_test
 
-# Create masks for the upper triangle
-mask_train = np.triu(np.ones_like(corr_train, dtype=bool))
-mask_test = np.triu(np.ones_like(corr_test, dtype=bool))
+	# Calculate correlation matrices for train_data and test_data
+	corr_train = train_data[train_variables].corr()
+	corr_test = test_data[test_variables].corr()
 
-# Set the text size and rotation
-annot_kws = {"size": 8, "rotation": 45}
+	# Create masks for the upper triangle
+	mask_train = np.triu(np.ones_like(corr_train, dtype=bool))
+	mask_test = np.triu(np.ones_like(corr_test, dtype=bool))
 
-# Generate heatmaps for train_data
-plt.figure(figsize=(15, 5))
-plt.subplot(1, 2, 1)
-ax_train = sns.heatmap(corr_train, mask=mask_train, cmap='viridis', annot=True,
-                      square=True, linewidths=.5, xticklabels=1, yticklabels=1, annot_kws=annot_kws)
-plt.title('Correlation Heatmap - Train Data')
+	# Set the text size and rotation
+	annot_kws = {"size": 8, "rotation": 45}
 
-# Generate heatmaps for test_data
-plt.subplot(1, 2, 2)
-ax_test = sns.heatmap(corr_test, mask=mask_test, cmap='viridis', annot=True,
-                     square=True, linewidths=.5, xticklabels=1, yticklabels=1, annot_kws=annot_kws)
-plt.title('Correlation Heatmap - Test Data')
+	# Generate heatmaps for train_data
+	plt.figure(figsize=(15, 5))
+	plt.subplot(1, 2, 1)
+	ax_train = sns.heatmap(corr_train, mask=mask_train, cmap='viridis', annot=True, square=True, linewidths=.5, xticklabels=1, yticklabels=1, annot_kws=annot_kws)
+	plt.title('Correlation Heatmap - Train Data')
 
-# Adjust layout
-plt.tight_layout()
-
-# Show the plots
-plt.show()
+	# Generate heatmaps for test_data
+	plt.subplot(1, 2, 2)
+	ax_test = sns.heatmap(corr_test, mask=mask_test, cmap='viridis', annot=True,square=True, linewidths=.5, xticklabels=1, yticklabels=1, annot_kws=annot_kws)
+	plt.title('Correlation Heatmap - Test Data')
+	plt.tight_layout()
+	#plt.show()
+	plt.savefig(f'outputs/correlation_of_features.png', bbox_inches='tight')
