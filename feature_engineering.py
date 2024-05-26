@@ -53,6 +53,7 @@ def tf_idf(df, column, n, p):
     
     # Convert to DataFrame
     tfidf_df = pd.DataFrame(x_pca)
+    tfidf_df.to_csv('outputs/transformed_data.csv', index=False)
 
     # Naming columns in the new DataFrame
     cols = [(column + "_tfidf_" + str(f)) for f in tfidf_df.columns.to_list()]
@@ -66,7 +67,7 @@ def tf_idf(df, column, n, p):
     
     return df
 
-def perform_feature_engineering(df):
+def feature_engineering(df):
     # Age Group
     age_bins = [0, 18, 30, 40, 50, 60, 100]
     df['AgeGroup'] = pd.cut(df['Age'], bins=age_bins, labels=False, right=False)
@@ -105,12 +106,12 @@ def perform_feature_engineering(df):
     
     return df
 
-# Apply the function to the training data
-train_data = perform_feature_engineering(train_data)
+def perform_feature_engineering(train_data, test_data):
+    train_data = feature_engineering(train_data)
+    test_data = feature_engineering(test_data)
 
-# Apply the function to the test data
-test_data = perform_feature_engineering(test_data)
-
-columns_to_drop = ['CustomerId','Surname']
-train_data.drop(columns_to_drop, axis=1, inplace=True)
-test_data.drop(columns_to_drop, axis=1, inplace=True)
+    columns_to_drop = ['CustomerId','Surname']
+    train_data.drop(columns_to_drop, axis=1, inplace=True)
+    test_data.drop(columns_to_drop, axis=1, inplace=True)
+    
+    return train_data, test_data

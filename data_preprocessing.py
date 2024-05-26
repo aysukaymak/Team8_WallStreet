@@ -34,23 +34,23 @@ from sklearn.gaussian_process import GaussianProcessClassifier
 from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, GradientBoostingClassifier
 from sklearn.ensemble import HistGradientBoostingClassifier
 
+import optuna
+import xgboost as xgb
+import lightgbm as lgb
+from xgboost import XGBClassifier
+from lightgbm import LGBMClassifier
+from catboost import CatBoostClassifier
+
+from feature_engineering import perform_feature_engineering
+
 import warnings as wrn
 wrn.filterwarnings('ignore', category = DeprecationWarning) 
 wrn.filterwarnings('ignore', category = FutureWarning) 
 wrn.filterwarnings('ignore', category = UserWarning) 
 
-# Drop null values from original_data
-original_data = original_data.dropna()
-original_data.drop('RowNumber', axis=1, inplace=True)
-
-# Print the count of null values in original_data
-print(original_data.isnull().sum())
-
-# Combine original_data with train_data
-train_data = pd.concat([train_data, original_data], axis=0).reset_index(drop=True)
-
-#**** Outlier Detection ****#
-columns_to_check = numerical_variables
+numerical_variables = ['CreditScore','Age', 'Balance','EstimatedSalary' ]
+target_variable = 'Exited'
+categorical_variables = ['Geography', 'Gender', 'Tenure','NumOfProducts', 'HasCrCard','IsActiveMember']
 
 def remove_outliers_iqr(data, column):
     Q1 = data[column].quantile(0.1)
@@ -67,85 +67,100 @@ def remove_outliers_iqr(data, column):
     
     return filtered_data, rows_deleted
 
-rows_deleted_total = 0
+def preprocess_data(train_data, test_data, original_data):
+    # Drop null values from original_data
+    original_data = original_data.dropna()
+    original_data.drop('RowNumber', axis=1, inplace=True)
+    print(original_data.isnull().sum())
 
-for column in columns_to_check:
-    train_data, rows_deleted = remove_outliers_iqr(train_data, column)
-    rows_deleted_total += rows_deleted
-    print(f"Rows deleted for {column}: {rows_deleted}")
+    # Combine original_data with train_data
+    train_data = pd.concat([train_data, original_data], axis=0).reset_index(drop=True)
+    
+    # Perform feature engineering
+    train_data, test_data = perform_feature_engineering(train_data, test_data)
 
-print(f"Total rows deleted: {rows_deleted_total}")
+    #**** Outlier Detection ****#
+    rows_deleted_total = 0
+    for column in numerical_variables:
+        train_data, rows_deleted = remove_outliers_iqr(train_data, column)
+        rows_deleted_total += rows_deleted
+        print(f"Rows deleted for {column}: {rows_deleted}")
 
-y = train_data['Exited']
-id_test = test_data['id']
+    print(f"Total rows deleted: {rows_deleted_total}")
+    
+    #**** Transformation ****#
+    # [FOR TRAIN]
+    # Identify features with skewness greater than 0.75
+    # Get the index of the data to be transformed
+    skewed_features = train_data[numerical_variables].skew()[train_data[numerical_variables].skew() > 0.75].index.values
 
-#**** Transformation ****#
-# [FOR TRAIN]
-# Identify features with skewness greater than 0.75
-# Get the index of the data to be transformed
-skewed_features = train_data[numerical_variables].skew()[train_data[numerical_variables].skew() > 0.75].index.values
+    # Print the list of variables to be transformed
+    print("Features to be transformed (skewness > 0.75):")
+    print(skewed_features)
 
-# Print the list of variables to be transformed
-print("Features to be transformed (skewness > 0.75):")
-display(skewed_features)
+    # Apply log1p transformation to skewed features
+    train_data[skewed_features] = np.log1p(train_data[skewed_features])
 
-# Apply log1p transformation to skewed features
-train_data[skewed_features] = np.log1p(train_data[skewed_features])
+    # [FOR TEST]
+    # Identify features with skewness greater than 0.75
+    # Get the index of the data to be transformed
+    skewed_features = test_data[numerical_variables].skew()[test_data[numerical_variables].skew() > 0.75].index.values
 
-# [FOR TEST]
-# Identify features with skewness greater than 0.75
-# Get the index of the data to be transformed
-skewed_features = test_data[numerical_variables].skew()[test_data[numerical_variables].skew() > 0.75].index.values
+    # Print the list of variables to be transformed
+    print("Features to be transformed (skewness > 0.75):")
+    print(skewed_features)
 
-# Print the list of variables to be transformed
-print("Features to be transformed (skewness > 0.75):")
-display(skewed_features)
+    # Apply log1p transformation to skewed features
+    test_data[skewed_features] = np.log1p(test_data[skewed_features])
 
-# Apply log1p transformation to skewed features
-test_data[skewed_features] = np.log1p(test_data[skewed_features])
+    #**** Feature Encoding ****#
+    # Selecting specific columns for encoding
+    columns_to_encode = ['Geography', 'Gender', 'NumOfProducts', 'HasCrCard', 'IsActiveMember','Geo_Gender','Customer_Status']
+    train_data_to_encode = train_data[columns_to_encode]
+    test_data_to_encode = test_data[columns_to_encode]
 
-#**** Feature Encoding ****#
-# Selecting specific columns for encoding
-columns_to_encode = ['Geography', 'Gender', 'NumOfProducts', 'HasCrCard', 'IsActiveMember','Geo_Gender','Customer_Status']
-train_data_to_encode = train_data[columns_to_encode]
-test_data_to_encode = test_data[columns_to_encode]
+    # Dropping selected columns for scaling
+    train_data_to_scale = train_data.drop(columns_to_encode, axis=1)
+    test_data_to_scale = test_data.drop(columns_to_encode, axis=1)
 
-# Dropping selected columns for scaling
-train_data_to_scale = train_data.drop(columns_to_encode, axis=1)
-test_data_to_scale = test_data.drop(columns_to_encode, axis=1)
+    # Use pandas get_dummies to one-hot encode 'Geography' and 'Gender' in train_data
+    train_data_encoded = pd.get_dummies(train_data_to_encode, columns=['Geography', 'Gender','NumOfProducts', 'HasCrCard','IsActiveMember','Geo_Gender','Customer_Status'], drop_first=True)
 
-# Use pandas get_dummies to one-hot encode 'Geography' and 'Gender' in train_data
-train_data_encoded = pd.get_dummies(train_data_to_encode, columns=['Geography', 'Gender','NumOfProducts', 'HasCrCard','IsActiveMember','Geo_Gender','Customer_Status'], drop_first=True)
+    # Use pandas get_dummies to one-hot encode 'Geography' and 'Gender' in test_data
+    test_data_encoded = pd.get_dummies(test_data_to_encode, columns=['Geography', 'Gender','NumOfProducts', 'HasCrCard','IsActiveMember','Geo_Gender','Customer_Status'], drop_first=True)
+    
+    print(train_data_encoded.head())
+    print(test_data_encoded.head())
+    train_data_encoded.to_csv('outputs/encoded_train_data.csv', index=False)
+    test_data_encoded.to_csv('outputs/encoded_test_data.csv', index=False)
 
-# Use pandas get_dummies to one-hot encode 'Geography' and 'Gender' in test_data
-test_data_encoded = pd.get_dummies(test_data_to_encode, columns=['Geography', 'Gender','NumOfProducts', 'HasCrCard','IsActiveMember','Geo_Gender','Customer_Status'], drop_first=True)
 
-print(train_data_encoded.head())
-print(test_data_encoded.head())
+    #**** Feature Scaling ****#
+    # Initialize MinMaxScaler
+    minmax_scaler = MinMaxScaler()
 
-#**** Feature Scaling ****#
-# Initialize MinMaxScaler
-minmax_scaler = MinMaxScaler()
+    # Fit the scaler on the training data
+    minmax_scaler.fit(train_data_to_scale.drop(['Exited'], axis=1))
 
-# Fit the scaler on the training data
-minmax_scaler.fit(train_data_to_scale.drop(['Exited'], axis=1))
+    # Scale the training data
+    scaled_data_train = minmax_scaler.transform(train_data_to_scale.drop(['Exited'], axis=1))
+    scaled_train_df = pd.DataFrame(scaled_data_train, columns=train_data_to_scale.drop(['Exited'], axis=1).columns)
 
-# Scale the training data
-scaled_data_train = minmax_scaler.transform(train_data_to_scale.drop(['Exited'], axis=1))
-scaled_train_df = pd.DataFrame(scaled_data_train, columns=train_data_to_scale.drop(['Exited'], axis=1).columns)
+    # Scale the test data using the parameters from the training data
+    scaled_data_test = minmax_scaler.transform(test_data_to_scale)
+    scaled_test_df = pd.DataFrame(scaled_data_test, columns=test_data_to_scale.columns)
 
-# Scale the test data using the parameters from the training data
-scaled_data_test = minmax_scaler.transform(test_data_to_scale)
-scaled_test_df = pd.DataFrame(scaled_data_test, columns=test_data_to_scale.columns)
+    print(scaled_train_df.head())
+    print(scaled_test_df.head())
+    scaled_train_df.to_csv('outputs/scaled_train_data.csv', index=False)
+    scaled_test_df.to_csv('outputs/scaled_test_data.csv', index=False)
 
-print(scaled_train_df.head())
-print(scaled_test_df.head())
+    # Concatenate train datasets
+    train_data_combined = pd.concat([train_data_encoded.reset_index(drop=True), scaled_train_df.reset_index(drop=True)], axis=1)
 
-# Concatenate train datasets
-train_data_combined = pd.concat([train_data_encoded.reset_index(drop=True), scaled_train_df.reset_index(drop=True)], axis=1)
+    # Concatenate test datasets
+    test_data_combined = pd.concat([test_data_encoded.reset_index(drop=True), scaled_test_df.reset_index(drop=True)], axis=1)
 
-# Concatenate test datasets
-test_data_combined = pd.concat([test_data_encoded.reset_index(drop=True), scaled_test_df.reset_index(drop=True)], axis=1)
-
-print(train_data_combined.head())
-print(test_data_combined.head())
+    print(train_data_combined.head())
+    print(test_data_combined.head())
+    return train_data_combined, test_data_combined, train_data, test_data
