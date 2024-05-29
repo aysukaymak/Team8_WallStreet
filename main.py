@@ -1,4 +1,5 @@
 # main.py
+import pandas as pd
 
 # Import functions from each module
 from load_data import load_dataset
@@ -28,6 +29,15 @@ def main():
     
     # Tune hyperparameters and build/train the optuma weights model
     ensemble_pred_proba=tune_hyperparameters(train_data_combined, test_data_combined, xgb_selected_features, lgb_selected_features, cb_selected_features, xgb_model, lgb_model, cat_model)
+    
+    # Assuming 'test_data_combined' is the DataFrame for the test set
+    ensemble_predictions = pd.DataFrame({
+        'id': test_data['id'],
+        'Exited': ensemble_pred_proba  # Fill in the predicted probabilities
+    })
+
+    # Save the submission DataFrame to a CSV file
+    ensemble_predictions.to_csv('outputs/predictions.csv', index=False)
         
 if __name__ == "__main__":
     main()
