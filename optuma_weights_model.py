@@ -7,7 +7,7 @@ import scipy.stats as stats
 from scipy import stats
 
 from sklearn.model_selection import GroupKFold
-from sklearn.metrics import accuracy_score, classification_report, mean_absolute_error
+from sklearn.metrics import accuracy_score, classification_report, mean_absolute_error, f1_score, recall_score, precision_score
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.svm import LinearSVC
 from sklearn.preprocessing import RobustScaler
@@ -46,7 +46,10 @@ wrn.filterwarnings('ignore', category = DeprecationWarning)
 wrn.filterwarnings('ignore', category = FutureWarning) 
 wrn.filterwarnings('ignore', category = UserWarning) 
 
-def build_optuma_weights_model(train_data_combined, test_data_combined,xgb_model, xgb_selected_features, lgb_model, lgb_selected_features, cat_model, cb_selected_features):
+def build_optuma_weights_model(train_data_combined, test_data_combined, xgb_model, xgb_selected_features, lgb_model, lgb_selected_features, cat_model, cb_selected_features):
+    # Initialize empty lists to store results
+    results = []
+    
     # Define objective function for Optuna to optimize
     X = train_data_combined.drop('Exited', axis=1)
     y = train_data_combined['Exited']
@@ -73,32 +76,56 @@ def build_optuma_weights_model(train_data_combined, test_data_combined,xgb_model
         ensemble_pred_proba = (
             xgb_weight * xgb_model.predict_proba(X_test[[feature for feature in xgb_selected_features if feature != 'Exited']])[:, 1] +
             lgb_weight * lgb_model.predict_proba(X_test[[feature for feature in lgb_selected_features if feature != 'Exited']])[:, 1] +
-            cat_weight * cat_model.predict_proba(X_test[[feature for feature in     cb_selected_features if feature != 'Exited']])[:, 1]
+            cat_weight * cat_model.predict_proba(X_test[[feature for feature in cb_selected_features if feature != 'Exited']])[:, 1]
         )
 
         # Assuming y_test is available
+        y_pred = np.where(ensemble_pred_proba > 0.5, 1, 0)
         auc_score = roc_auc_score(y_test, ensemble_pred_proba)
+        f1 = f1_score(y_test, y_pred)
+        recall = recall_score(y_test, y_pred)
+        precision = precision_score(y_test, y_pred)
+        acc = accuracy_score(y_test, y_pred)
+
+        # Append results to list
+        results.append({
+            'trial': trial.number,
+            'xgb_weight': xgb_weight,
+            'lgb_weight': lgb_weight,
+            'cat_weight': cat_weight,
+            'AUC': auc_score,
+            'F1': f1,
+            'Recall': recall,
+            'Precision': precision,
+            'Accuracy': acc
+        })
+        
+        print(f"AUC: {auc_score}, F1: {f1}, Recall: {recall}, Precision: {precision}, Accuracy: {acc}")
 
         return auc_score
 
     # Optimize using Optuna
     study = optuna.create_study(direction='maximize')
     study.optimize(objective, n_trials=100)
-
+    
+    # Convert results to DataFrame
+    results_df = pd.DataFrame(results)
+    results_df.to_csv('outputs/results.csv', index=False)
+    
     # Get the best weights
     best_weights = study.best_params
     xgb_weight = best_weights['xgb_weight']
     lgb_weight = best_weights['lgb_weight']
     cat_weight = best_weights['cat_weight']
-    
+
     total_weight = xgb_weight + lgb_weight + cat_weight
     xgb_weight /= total_weight
     lgb_weight /= total_weight
     cat_weight /= total_weight
-    
-    print('xgb_weight: ',xgb_weight)
-    print('lgb_weight: ',lgb_weight)
-    print('cat_weight: ',cat_weight)
+
+    print('xgb_weight: ', xgb_weight)
+    print('lgb_weight: ', lgb_weight)
+    print('cat_weight: ', cat_weight)
 
     xgb_model.fit(train_data_combined[xgb_selected_features].drop('Exited', axis=1), y)
     xgb_pred_proba = xgb_model.predict_proba(test_data_combined[[feature for feature in xgb_selected_features if feature != 'Exited']])[:, 1]
@@ -109,7 +136,6 @@ def build_optuma_weights_model(train_data_combined, test_data_combined,xgb_model
     cat_model.fit(train_data_combined[cb_selected_features].drop('Exited', axis=1), y)
     cb_pred_proba = cat_model.predict_proba(test_data_combined[[feature for feature in cb_selected_features if feature != 'Exited']])[:, 1]
 
-    #ensemble_pred_proba = (xgb_pred_proba * 0) + (lgb_pred_proba * 0) + (cb_pred_proba * 1) 
-    ensemble_pred_proba = (xgb_pred_proba * xgb_weight) + (lgb_pred_proba * lgb_weight) + (cb_pred_proba * cat_weight) 
-    
+    ensemble_pred_proba = (xgb_pred_proba * xgb_weight) + (lgb_pred_proba * lgb_weight) + (cb_pred_proba * cat_weight)
+
     return ensemble_pred_proba
